@@ -38,17 +38,17 @@ This SKIP proposes a new `workloadIdentity` field in the SpinApp resource specif
 
 The `workloadIdentity` field has the following structure:
 
-- `providers`: A map of cloud providers and their configurations
-  - `azure`: Configuration specific to Azure Workload Identity
-    - `clientId`: The client ID of the user-assigned managed identity in Azure. Validation in the operator will be done to ensure the client ID is a valid UUID. The operator should have a clear error message if the client ID is invalid.
+- `workloadIdentity`: Configuration for Workload Identity
+  - `serviceAccountName`: The name of the Kubernetes service account to use for workload identity.
+  - `providerMetadata`: A map of cloud provider-specific configuration.
+
+The Azure provider metadata has the following structure:
+
+- `azure`: true | false
 
 When this field is configured, the operator will:
-1. Create a Kubernetes service account with the appropriate Azure Workload Identity annotations
-2. Add the required labels for Azure Workload Identity
-
-When this field is updated, the operator will:
-1. Update the service account with the new client ID
-2. Update the deployment to use the new service account
+1. Mutate the deployment to use the workload identity service account
+2. Label the pod with Azure Workload Identity annotations
 
 Here's an example of a SpinApp using Azure Workload Identity (some fields are omitted for brevity):
 ```yaml
@@ -60,31 +60,19 @@ spec:
   image: "ghcr.io/spinkube/containerd-shim-spin/examples/spin-rust-hello:v0.13.0"
   executor: containerd-shim-spin
   workloadIdentity:
-    providers:
-      azure:
-        clientId: "YYYYYYYY-YYYY-YYYY-YYYY-YYYYYYYYYYYY"
-...
+    serviceAccountName: "workload-identity-sa"
+    providerMetadata:
+      azure: true
 ```
 
-The operator will create a service account with the following annotations:
+
+And the pod will have the following label and service account name (omitted for brevity):
 
 ```yaml
-apiVersion: core.k8s.io/v1
-kind: ServiceAccount
-metadata:
-  name: workload-identity-sa
-  annotations:
-    azure.workload.identity/client-id: "YYYYYYYY-YYYY-YYYY-YYYY-YYYYYYYYYYYY"
-```
-
-And the pod will have the following label (omitted for brevity):
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    azure.workload.identity/use: true
+Name: pod-name
+ServiceAccount: workload-identity-sa
+Labels:
+  azure.workload.identity/use: true
 ...
 ```
 
@@ -95,6 +83,7 @@ Roughly speaking, you need to create the following resources:
 - An AKS cluster with the OIDC issuer and a Microsoft Entra Workload ID.
 - A user-assigned managed identity
 - A federated credential for the user-assigned managed identity
+- A Kubernetes service account
 
 The Spin operator will not create or manage any of these resources. Instead, identity provisioning will be handled externally by the user. Recommended tools are:
 
